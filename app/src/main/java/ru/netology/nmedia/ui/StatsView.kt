@@ -25,15 +25,37 @@ class StatsView @JvmOverloads constructor(
     private var radius = 0F
     private var center = PointF(0F, 0F)
     private var oval = RectF(0F, 0F, 0F, 0F)
+    private var fillingType = 0
+    fun get(): Int {
+        return fillingType
+    }
+
+    fun setFillingType(filType: Int) {
+        fillingType = filType
+        invalidate()
+        requestLayout()
+    }
 
     private var lineWidth = AndroidUtils.dp(context, 5F).toFloat()
     private var fontSize = AndroidUtils.dp(context, 40F).toFloat()
     private var colors = emptyList<Int>()
     private var angle = 0F
-    //private var progress = 0F
+    private var startFrom = -90F
+    private var progress = 0F
     private var valueAnimator: ValueAnimator? = null
 
     init {
+        context.theme.obtainStyledAttributes(
+            attrs,
+            R.styleable.StatsView,
+            0, 0
+        ).apply {
+            try {
+                fillingType = getInteger(R.styleable.StatsView_fillingType, 0)
+            } finally {
+                recycle()
+            }
+        }
         context.withStyledAttributes(attrs, R.styleable.StatsView) {
             lineWidth = getDimension(R.styleable.StatsView_lineWidth, lineWidth)
             fontSize = getDimension(R.styleable.StatsView_fontSize, fontSize)
@@ -41,6 +63,7 @@ class StatsView @JvmOverloads constructor(
             colors = resources.getIntArray(resId).toList()
         }
     }
+
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -61,7 +84,6 @@ class StatsView @JvmOverloads constructor(
         }
 
 
-
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         radius = min(w, h) / 2F - lineWidth / 2
         center = PointF(w / 2F, h / 2F)
@@ -75,14 +97,8 @@ class StatsView @JvmOverloads constructor(
         if (data.isEmpty()) {
             return
         }
-
-        var startFrom = -90F
-        for ((index, datum) in data.withIndex()) {
-            paint.color = colors.getOrNull(index) ?: randomColor()
-            canvas.drawArc(oval, startFrom, angle , false, paint)
-            startFrom += (angle)
-        }
-
+        setFillingType(2)
+        drawFilling(canvas, fillingType)
 
         canvas.drawText(
             "%.2f%%".format(data.sum() * 100),
@@ -92,19 +108,59 @@ class StatsView @JvmOverloads constructor(
         )
     }
 
+    private fun drawFilling(canvas: Canvas, fillingType: Int) {
+
+        when (fillingType) {
+            0 -> {
+                // из четырех точек
+                for ((index, datum) in data.withIndex()) {
+                    angle = 360F * datum
+                    paint.color = colors.getOrNull(index) ?: randomColor()
+                    canvas.drawArc(oval, startFrom, angle * progress, false, paint)
+                    startFrom += angle
+                }
+            }
+            1 -> {
+                //последовательно
+                for ((index, datum) in data.withIndex()) {
+                    angle = 360F * datum
+                    paint.color = colors.getOrNull(index) ?: randomColor()
+                    canvas.drawArc(oval, (startFrom + angle) * progress, angle, false, paint)
+                    startFrom += angle
+                }
+            }
+            2 -> {
+                //в обе стороны
+                startFrom = -45F
+                for ((index, datum) in data.withIndex()) {
+                    angle = 360F * datum
+                    paint.color = colors.getOrNull(index) ?: randomColor()
+                    canvas.drawArc(
+                        oval,
+                        startFrom - (angle * progress) / 2,
+                        angle * progress,
+                        false,
+                        paint
+                    )
+                    startFrom += angle
+                }
+            }
+        }
+    }
+
     private fun update() {
         valueAnimator?.let {
             it.removeAllListeners()
             it.cancel()
         }
-        //progress = 0F
-        angle = 0F
-        valueAnimator = ValueAnimator.ofFloat(0F, 90F).apply {
+        progress = 0F
+
+        valueAnimator = ValueAnimator.ofFloat(0F, 1F).apply {
             addUpdateListener { anim ->
-                angle = anim.animatedValue as Float
+                progress = anim.animatedValue as Float
                 invalidate()
             }
-            duration = 500
+            duration = 3500
             interpolator = DecelerateInterpolator()
         }.also {
             it.start()
